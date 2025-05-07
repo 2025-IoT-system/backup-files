@@ -1,6 +1,8 @@
 import cv2
 import RPi.GPIO as GPIO
 import threading
+import os
+import csv
 
 # Motor pin configuration
 PWMA = 18
@@ -20,14 +22,14 @@ def motor_go(speed):
     GPIO.output(BIN2, True)   # BIN2 pin
     R_Motor.ChangeDutyCycle(speed)
 
-# Move backward
-def motor_back(speed):
-    L_Motor.ChangeDutyCycle(speed)
-    GPIO.output(AIN2, False)  # AIN2 pin
-    GPIO.output(AIN1, True)   # AIN1 pin
-    R_Motor.ChangeDutyCycle(speed)
-    GPIO.output(BIN2, True)   # BIN2 pin
-    GPIO.output(BIN1, False)  # BIN1 pin
+# # Move backward
+# def motor_back(speed):
+#     L_Motor.ChangeDutyCycle(speed)
+#     GPIO.output(AIN2, False)  # AIN2 pin
+#     GPIO.output(AIN1, True)   # AIN1 pin
+#     R_Motor.ChangeDutyCycle(speed)
+#     GPIO.output(BIN2, True)   # BIN2 pin
+#     GPIO.output(BIN1, False)  # BIN1 pin
 
 # Turn left
 def motor_left(speed):
@@ -56,7 +58,6 @@ def motor_stop():
     GPIO.output(BIN2, 1)
     R_Motor.ChangeDutyCycle(0)
     
-
 # Initialize GPIO settings
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
@@ -76,7 +77,6 @@ R_Motor.start(0)
 # Default speed setting
 speedSet = 50
 
-
 stop_timer = None
 
 def schedule_stop(delay=0.25):
@@ -91,38 +91,58 @@ def main():
     camera = cv2.VideoCapture(-1)
     camera.set(3, 640)
     camera.set(4, 480)
-    # filepath = "/home/username/AI_CAR/video/train"
+    filepath = "/home/junjaljonsu/pi/sagong/datasets"
+    os.makedirs(filepath, exist_ok=True)
+
+    # CSV
+    csv_path = os.path.join(filepath, "labels.csv")
+    
+    if not os.path.exists(csv_path):
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["filename", "label"])
+
+    # CSV append 
+    csv_file = open(csv_path, "a", newline="")
+    csv_writer = csv.writer(csv_file)
 
     i = 0
-    carState = "stop"
+    direction = "F"
 
     while camera.isOpened():
         keyValue = cv2.waitKey(10)
+        save_flag = False
+
         if keyValue == ord('q'):
             break
         elif keyValue == 82:  # Up arrow
             print("go")
-            carState = "go"
+            direction = "F"
             motor_go(speedSet)
             schedule_stop()
-        elif keyValue == 84:  # Down arrow
-            # do nothing
-            print("stop")
-            carState = "stop"
-            motor_stop()
+            save_flag = True
+        # elif keyValue == 84:  # Down arrow
+        #     # do nothing
+        #     print("stop")
+        #     carState = "stop"
+        #     motor_stop()
         elif keyValue == 81:  # Left arrow
             print("left")
-            carState = "left"
+            direction = "L"
             motor_left(speedSet)
             schedule_stop()
+            save_flag = True
         elif keyValue == 83:  # Right arrow
             print("right")
-            carState = "right"
+            direction = "R"
             motor_right(speedSet)
             schedule_stop()
+            save_flag = True
 
         # Read frame and flip it
-        _, image = camera.read()
+        ret, image = camera.read()
+        if not ret:
+            continue
         image = cv2.flip(image, -1)
         cv2.imshow('Original', image)
 
@@ -136,22 +156,24 @@ def main():
         save_image = cv2.resize(save_image, (200, 66))
         cv2.imshow('Save', save_image)
 
-        # Save image files based on current state
-        # if carState == "left":
-        #     cv2.imwrite("%s_%05d_%03d.png" % (filepath, i, 45), save_image)
-        #     i += 1
-        # elif carState == "right":
-        #     cv2.imwrite("%s_%05d_%03d.png" % (filepath, i, 135), save_image)
-        #     i += 1
-        # elif carState == "go":
-        #     cv2.imwrite("%s_%05d_%03d.png" % (filepath, i, 90), save_image)
-        #     i += 1
+        # save_flag == True일 때 저장, csv labeling
+        if save_flag:
+            img_name = f"image{i}.png"
+            fullpath = os.path.join(filepath, img_name)
+            cv2.imwrite(fullpath, save_image)
+
+            # CSV append
+            csv_writer.writerow([img_name, direction])
+            csv_file.flush()
+
+            i += 1
 
     if stop_timer is not None:
         stop_timer.cancel()
-
+    csv_file.close()
+    camera.release()
     cv2.destroyAllWindows()
+    GPIO.cleanup()
 
 if __name__ == '__main__':
     main()
-    GPIO.cleanup()
