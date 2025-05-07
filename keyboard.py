@@ -101,6 +101,7 @@ def main():
         with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["filename", "label"])
+            writer.flush()
 
     # CSV append 
     csv_file = open(csv_path, "a", newline="")
